@@ -2,20 +2,27 @@ import streamlit as st
 import transformers
 from transformers import AutoModelForQuestionAnswering, AutoTokenizer
 import torch
+import pandas as pd
 
 mc='madhavpro3/ExtractTherapyDetails'
 tokenizer = AutoTokenizer.from_pretrained(mc)
 mc_model = AutoModelForQuestionAnswering.from_pretrained(mc)
 
-context = st.text_area(
-	"Write input passage here",
-	"The U.S. Food and Drug Administration (FDA) granted approval to atezolizumab and durvalumab in March of 2019 and 2020, respectively, for use in combination with chemotherapy for first-line treatment of patients with extensive stage small cell lung cancer. These approvals were based on data from two randomized controlled trials, IMpower133 (atezolizumab) and CASPIAN (durvalumab). Both trials demonstrated an improvement in overall survival (OS) with anti-programmed death ligand 1 antibodies when added to platinum-based chemotherapy as compared with chemotherapy alone. In IMpower133, patients receiving atezolizumab with etoposide and carboplatin demonstrated improved OS (hazard ratio [HR], 0.70; 95% confidence interval [CI], 0.54-0.91; p = .0069), with median OS of 12.3 months",
-	height=300,
+st.header("Input FDA approval passages to extract drug information")
+
+passages = st.text_area(
+	"Input passage(s)",
+	placeholder="""  The U.S. Food and Drug Administration (FDA) granted approval to atezolizumab and durvalumab...
+   
+  In April 2022, the FDA approved axicabtagene ciloleucel (axi-cel) for adults with large B-cell lymphoma (LBCL) ....""",
+
+	height=250,
 )
 
 question=st.text_input(
 	"Question",
-	"what is the drug?",
+   placeholder="Try: what is the drug? who are the patients? what is the ORR?",
+   key="ques"
 )
 
 def get_answer(question, context, model,tokenizer):
@@ -52,29 +59,70 @@ def identifytopics(input_question):
   # isdortopic=[input_question.count(dortopic)>0 for dortopic in dor]
 
   processed_questions=[]
+  topics=[]
   if sum(isdrugtopic)>0:
     processed_questions.append('what is the drug?')
+    topics.append("Drug")
   if sum(ispatienttopic)>0:
     processed_questions.append('who are the patients?')
+    topics.append("Patients")
   # if sum(isorrtopic)>0:
   #   processed_questions.append('what is the orr?')
   # if sum(isdortopic)>0:
   #   processed_questions.append('what is the dor?')
 
-  return processed_questions
+  return processed_questions,topics
 
-def generateresponse(input_question,context,model,tokenizer):
-  questions_brokendown=identifytopics(input_question)
-  print("questions",questions_brokendown)
+def generateresponse(input_question,passages,model,tokenizer):
+  passages_lst=passages.split('\n\n')
+  questions_lst,topics=identifytopics(input_question)
+  # print("questions",questions_brokendown)
   answers=[]
-  if len(questions_brokendown)==0:
+  if len(questions_lst)==0:
     answers.append("Can't find the answers you are looking for")
-    return answers
+    return answers,topics
   
-  answers=[get_answer(question, context, model,tokenizer) for question in questions_brokendown]
-  return answers
+  answers=[[get_answer(question, passage, model,tokenizer) 
+            for question in questions_lst] for passage in passages_lst]
+  return answers,topics
 
-if st.button("Extract"):
-  a=generateresponse(question, context, mc_model, tokenizer)
-  for ans in a:
-    st.write(ans)
+if st.button("Answer this"):
+  question=st.session_state.ques
+  a,topics=generateresponse(question, passages, mc_model, tokenizer)
+  ans_df=pd.DataFrame(a,columns=topics)   
+  st.write(ans_df)
+if st.button("Extract all"):
+  question="drug patients orr dor"
+  a,topics=generateresponse(question, passages, mc_model, tokenizer)
+  ans_df=pd.DataFrame(a,columns=topics)   
+  st.write(ans_df)
+     
+# col1,col2=st.columns(2)
+
+# with col1:
+#    st.button("Answer this",on_click=viewresults)
+# with col2:
+#    question="drug patients orr dor"
+#    st.button("Extract all",on_click=viewresults)
+
+
+# def viewresults():
+#   a,topics=generateresponse(question, passages, mc_model, tokenizer)
+#   ans_df=pd.DataFrame(a,columns=topics)   
+#   st.write(ans_df)
+
+# with col1:
+#   st.button("Answer this",on_click=viewresults):
+#     a,topics=generateresponse(question, passages, mc_model, tokenizer)
+#     ans_df=pd.DataFrame(a,columns=topics)
+#     viewresults(ans_df)
+#     # st.write(ans_df)
+
+# with col2:
+#   if st.button("Extract all"):
+#     question="drug patients ORR DoR"
+#     # ans_df=pd.DataFrame({"Drug":a[0],"Patients":a[1]})
+#     ans_df=pd.DataFrame(a,columns=topics)
+#     viewresults(ans_df)
+#     # st.write(ans_df)
+
